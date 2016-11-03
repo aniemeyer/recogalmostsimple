@@ -1,0 +1,811 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{ngerman}%{babel}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{a4wide}
+\usepackage{amsthm}
+
+\newtheoremstyle{bla}{\topsep}{\topsep}
+{\itshape}%         Body font
+{}%         Indent amount (empty = no indent, \parindent = para indent)
+{\bfseries}% Thm head font
+{}%        Punctuation after thm head
+{0.3cm}%     Space after thm head (\newline = linebreak)
+{}%         Thm head spec
+
+\theoremstyle{bla}
+\newtheorem*{satz}{Satz}
+
+\title{\rm{SL}-Erkennung f"ur Matrizengruppen der Dimension 2}
+\author{Sabina Groth}
+\date{Software Praktikum \\ Sommersemester 2007}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+% \newpage
+
+\section{Vorwort}
+
+Der vorliegende Text dokumentiert im Rahmen des Softwarepraktikums II an der Universit"at Bayreuth die Implementierung eines \rm{SL}-Erkunnungsalgorithmus f"ur Matrizengruppen von Dimension 2, der von Peter Neumann und Cheryl Praeger in \cite{NP92} entwickelt worden ist. Kapitel \ref{gap} stellt das Softwarepaket GAP \cite{GAP} kurz vor. Kapitel \ref{recog} bietet eine knappe Einf"uhrung in das Paket "`recogbase"', welches von unserem Programm benutzt wird. Sodann werden die Motivation des Projekts (siehe Kapitel \ref{motivation}) und der zu Grunde liegender Algorithmus (siehe Kapitel \ref{algorthmus}) erkl"art. Kapitel \ref{methoden} beschreibt die neu definierten sowie bereits vorhandenen Methoden des Programms. Anwendungsbeispiele findet man in Kapitel \ref{bsp}.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\section{GAP-System}\label{gap}
+
+GAP \cite{GAP}, das im Englischen f"ur "`\textbf{G}roups, \textbf{A}lgorithms, and \textbf{P}rogramming"' steht, ist ein Softwarepaket f"ur Berechnungen im Gebiet der diskreten abstrakten Algebra. Das System ist "`erweiterbar"', das hei"st es ist m"oglich eigene Programme in der GAP-Sprache zu verfassen und diese genauso zu verwenden wie Programme, die Teil des Systems sind. Die Entwicklung von GAP begann im Jahre 1985 am Lehrstuhl D f"ur Mathematik, RWTH-Aachen, ist jedoch mittlerweile ein internationales Projekt mit Hauptsitz in St Andrews.
+
+Das System besteht aus einem Kernsystem und einer Anzahl von Paketen, die eine Erweiterung des Kerns darstellen. Ein Paket kann mittels des Aufrufs \texttt{LoadPackage} in das System geladen werden, woraufhin die Funktionen des Paketes sowie seine Dokumentation verf"ugbar werden.
+Das von uns genutzte Paket "`recogbase"' ist das Grundger"ust unseres Programms und wird im n"achsten Kapitel n"aher beschrieben.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\section{Paket "`recogbase"'}\label{recog}
+
+Um das Paket zu installieren, ruft man \texttt{LoadPackage(``recogbase'');} auf. Der Befehl \texttt{LoadPackage(``recog'');} l"adt neben dem Paket "`recogbase"' ebenfalls die bereits implementierten Gruppenerkennungs-Methoden.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\subsection{Idee}
+
+Das "`recogbase"'-Paket stellt einen Rahmen f"ur Situationen dar, in denen f"ur eine bestimmte Aufgabe zwar viele Methoden (eine Definition des Begriffs findet sich in Kapitel \ref{konzept}) zur Verf"ugung stehen, allerdings nicht von vornherein klar ist, welche dieser Methoden die "`beste"' ist und deswegen verwendet werden sollte. Wir entkommen der Qual der Wahl, indem wir eine Reihenfolge festgelegen, in der die verschiedenen Methoden ausprobiert werden sollen.
+Die Methoden wiederum geben an, ob ihre Ausf"uhrung erfolgreich war, und falls dies nicht der Fall war, ob es Sinn macht die jeweilige Methode zu einem sp"ateren Zeitpunkt nochmal aufzurufen.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\subsection{Konzept}\label{konzept}
+
+Zuerst erkl"aren wir, was unter einer "`Methode"' zu verstehen ist.
+Eine Methode ist eine GAP-Funktion, die einen der folgenden Werte zur"uckgeben muss:
+
+\begin{description}
+ \item[true] bedeutet, dass die Methode erfolgreich war und keine weiteren Methoden verwendet werden m"ussen,
+ \item[false] bedeutet, dass die Methode nicht erfolgreich war und in dieser Situation auch nicht erneut aufgerufen werden soll,
+ \item[fail] bedeutet, dass die Methode abgebrochen wird, es aber durchaus Sinn macht sie zu einem sp"aterem Zeitpunkt nochmal aufzurufen,
+ \item[NotApllicable] bedeutet, dass die Methode zum Zeitpunkt des Aufrufs nicht anwendbar ist, jedoch sp"ater erneut aufgerufen werden sollte.
+ \end{description}
+
+Die Ausgebewerte \textit{fail} und \textit{NotApplicable} m"ogen anfangs gleich erscheinen. Der Unterschied beider Werte wird zum Ende dieses Kapitels klar.
+
+Eine Methode wird in der Methodenauswahl mittels eines Rekords\footnote{engl. "`record"'. Ein Rekord ist eine Datenstruktur, die "ahnlich eine Liste Objekte beinhaltet. Im Gegensatz zu einer Liste sind diese jedoch nicht mit Zahlen, sondern Namen indiziert.} beschrieben. Dieser beinhaltet folgende Komponenten:
+
+\begin{description}
+ \item[Methode:] Name der Funktion;
+ \item[Rang:] Eine nat"urliche Zahl, die zur Sortierung unterschiedlicher Methoden dient. Je h"oher die Zahl, umso fr"uher wird die jeweilige Methode aufgerufen;
+ \item[Stempel:] Ein String, der die Methode eindeutig beschreibt;
+ \item[Kommentar:] Ein String, der als Kommentar dient. Dieses Feld ist optional und kann auch weggelassen werden.
+ \end{description}
+
+Methoden f"ur eine bestimmte Aufgabe finden wir in so genannten Methoden-Datenbanken. Eine Methoden-Datenbank ist eine Liste von Rekords, wobei -- wie bereits geschildert -- jeder Rekord eine Methode beschreibt.
+Um Methoden zur Methoden-Datenbank hinzuzuf"ugen, bedient man sich der Funktion
+\texttt{AddMethod( \textit{db}, \textit{method}, \textit{rank}, \textit{stamp}[, \textit{comment}] )}. Dabei ist \textit{db} eine Methoden-Datenbank (also eine Liste von Rekords), \textit{method} eine Methode, \textit{rank} ist der Rang der Methode und \textit{stamp} ein String. Die optionale Position \textit{commment} ist gegebenenfalls auch ein String.
+
+Immer wenn die Methodenauswahl benutzt werden soll, wird die Funktion \texttt{CallMethods( \textit{db}, \textit{limit}[, \textit{furtherargs}] )} aufgerufen. Die Funktion gibt sodann einen Rekord zur"uck, der das Verfahren der Methodenauswahl beschreibt. Das Argument \textit{db} muss eine Methoden-Datenbank sein, \textit{limit} eine nat"urliche Zahl, und \textit{furtherargs} steht f"ur eine beliebige Anzahl von weiteren Argumenten, die an die aufgerufenen Methoden weitergegeben werden.
+
+Der von \texttt{CallMethods} verwendete Algorithmus, funktioniert wie folgt. Ein interner Toleranzz"ahler wird auf Null gesetzt. Die Hauptschleife beginnt am Anfang der Methoden-Datenbank und durchl"auft nach der Reihe alle Methoden. Eine Methode wird allerdings nur dann aufgerufen, wenn sie zuvor nicht bereits \textit{false} oder in einem Durchlauf mit derselben Toleranz \textit{fail} zur"uckgegeben hat. Abh"angig von dem R"uckgabewert der aufgerufenen Methode passiert folgendes:
+
+\begin{description}
+ \item[false:] Die Hauptschleife beginnt wieder am Anfang der Methoden-Datenbank;
+ \item[fail:] Die Hauptschleife beginnt wieder am Anfang der Methoden-Datenbank;
+ \item[NotApplicable:] Die Hauptschleife geht zur n"achsten Methoden in der Methoden-Datenbank "uber;
+ \item[true:] Das Verfahren wird beendet.
+\end{description}
+
+Sobald die Hauptschleife das Ende der Methoden-Datenbank erreicht ohne dabei eine Methode aufgerufen zu haben, wird der Toleranzz"ahler um eins erh"oht und alles beginnt von Neuem. Dieses Verfahren wird solange wiederholt bis die Toleranz gr"o"ser ist als die im zweiten Argument von \texttt{CallMethods} gesetzte Grenze.
+Hier wird auch der Unterschied zwischen dem R"uckgabewert \textit{fail} und \textit{NotApplicable} deutlich. W"ahrend im Fall \textit{NotApplicable} die Hauptschleife zur n"achsten Methode in der Datenbank "ubergeht, geht sie im Fall \textit{fail} an den Anfang der Datenbank zur"uck.
+Man bemerke jedoch, dass dies allerding zu keiner Endlosschleife f"uhrt, da die jeweilige Methode solange "ubersprungen wird bis der Toleranzz"ahler erh"oht wird. Erst nachdem der Z"ahler um eins nach oben gesetzt wird, werden auch Methoden, die zuvor \textit{fail} zur"uckgegeben haben erneut aufgerufen. 
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\section{Motivation des Projekts}\label{motivation}
+
+Unser Augenmerk gilt Matrizengruppen, das hei"st Untergruppen der allgemeinen linearen Gruppe $\rm{GL}(n,q)$, die aus allen invertierbaren $n \times n$ Matrizen "uber dem endlichen K"orper von Ordnung $q$ besteht. Wollen wir Matrizengruppen auf bestimmte Eigenschaften untersuchen, so sto"sen wir oftmals auf Probleme, da die Ordnung von $\rm{GL}(n,q)$ exponentiell in $n$ w"achst und damit "`gew"ohnliche"' Methoden nicht selten scheitern l"asst.
+Eine Abhilfe bilden hierbei randomisierte Algorithmen, die auf der zuf"alligen Wahl von Elementen aus der Matrizengruppe $G$ beruhen. Beide im n"achsten Absatz angesprochenen Algorithmen sind randomisiert.
+
+Peter Neumann and Cheryl Praeger haben 1992 als erste einen Algorithmus \cite{NP92} zur Erkennung der speziellen linearen Gruppe $\rm{SL}(n,q)$ entwickelt. Die $\rm{SL}(n,q)$ ist eine Untergruppe der $\rm{GL}(n,q)$, die aus Matrizen mit Determinante 1 besteht. Sechs Jahre sp"ater ist dieser Algorithmus in \cite{NP98} von Alice Niemeyer und Cheryl Praeger verbessert, erweitert und in GAP implementiert worden. Allerdings ist die verallgemeinerte Version lediglich auf Matrizengruppen von Dimension $d \geq 3$ anwendbar. Demzufolge bestand meine Aufgabe nun darin, den von Alice Niemeyer angefertigten Algorithmus f"ur den Fall $d = 2$ zu erweitern. Dabei orientierte ich mich an einem in \cite{NP92} vorgeschlagenen Algorithmus.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\section{Algorithmus}\label{algorthmus}
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\subsection{Satz}
+
+Der Algorithmus basiert auf einem von Peter Neumann and Cheryl Praeger ver"offentlichte Paper "`A recognition algorithm for special linear groups"' \cite{NP92} und entscheidet, ob eine vorgegebene Matrizengruppe $G$ die spezielle lineare Gruppe $\rm{SL}(2,q)$ enth"alt.
+
+Sei $Z$ das Zentrum der Gruppe $G$ und somit die Untergruppe der Skalarmatrizen, die in $G$ enthalten sind. Wir betrachten den folgenden Satz.
+
+\begin{satz}
+ Sei $G \leq \rm{GL}(2,q)$ und $\rm{SL}(2,q) \nleq G$. Dann gilt eine oder mehrere der folgenden Aussagen:
+
+  \begin{enumerate}
+   \item $G$ ist reduzibel, das hei"st $G$ ist konjugiert zu einer Untergruppe von unteren $2 \times 2$ Dreiecksmatrizen;
+
+   \item $G$ ist imprimitiv, das hei"st $G$ ist konjugiert zu einer Untergruppe von $\rm{GL}(1,q)\, \rm{wr}\, \rm{Sym}(2)$;
+
+   \item $G$ ist konjugiert zu einer Untergruppe von $\Gamma\rm{L}(1,q^{2})$;
+
+   \item $G$ ist konjugiert zu einer Untergruppe von $\rm{GL}(2,r).Z$, wobei $\mathbb{F}_{r}$ einen echten Unterk"orper von $\mathbb{F}_{q}$ bezeichne;
+
+   \item $G/Z \cong \rm{Alt}(5)$;
+
+   \item $G/Z \cong \rm{Alt}(4)$ oder $\rm{Sym}(4)$.
+  \end{enumerate}
+\end{satz}
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\subsection{Verfahren}
+
+Die obige Liste erm"oglicht es nun, ein Verfahren zur Erkennung der speziellen linearen Gruppe $\rm{SL}(2,q)$ zu konstruieren. Die hierbei verwendeten Methoden k"onnen aus Kaptitel \ref{methoden} entnommen werden.
+Bemerke, dass eine Gruppe $G$, die in mindestens eine der Kategorien 1 bis 4 des obigen Satzes f"allt, die spezielle lineare Gruppe nicht enth"alt, w"ahrend es f"ur Gruppen aus Kategorie 5 und 6 einige wenige F"alle gibt, bei denen $G/Z$ isomorph zur Gruppe $\rm{Alt}(5)$, $\rm{Alt}(4)$ oder $\rm{Sym}(4)$ ist, allerdings dennoch die $\rm{SL}(2,q)$ enth"alt. Beispielsweise ist $\rm{SL}(2,5)/Z \cong \rm{Alt}(5)$.
+
+Sei also $G$ durch eine Menge von invertierbaren $2 \times 2$ Matrizen $g_{1},\dots,g_{k}$ "uber dem endlichen K"orper $\mathbb{F}_{q}$ erzeugt.
+
+ \begin{itemize}
+  \item Zun"achst wird durch Methode \ref{test} ein Pseudozufallselement $g \in G$ erzeugt.
+
+  \item Im zweiten Schritt wird $G$ auf Irreduzibilit"at getestet. Dabei hei"st $G$ irreduzibel, falls $\mathcal{V} = \mathbb{F}_{q}^{2}$, also der zu Grunde liegender Vektorraum, $G$-irreduzibel ist, das bedeutet, falls es keine echten $G$-invarianten Untervektorr"aume von $\mathcal{V}$ gibt. Dazu wird in Methode \ref{redu} untersucht wird, ob $\mathcal{V}$ bereits $\langle g \rangle$-irreduzibel ist. Trifft dies zu, dann ist auch $G$ irreduzibel. Kann die Reduzibilit"at von $G$ nach 15 Zufallselementen nicht ausgeschlossen werden, so bedient man sich in Methode \ref{meat} der so genannten MeatAxe, einem Algorithmus, der die Frage sicher beantworten kann.
+
+  Ist $G$ reduzibel, enth"alt $G$ die $\rm{SL}(2,q^2)$ nicht und der Algorithmus kann abgebrochen werden. Im Weiteren nehmen wir deshalb an, dass $G$ irreduzibel auf $\mathcal{V}$ operiert.
+
+  \item Sodann untersuchen wir in Methode \ref{abelsch} die Gruppe $G$ auf Kommutativit"at.
+
+  Falls dies der Fall ist, enth"alt $G$ die spezielle lineare Gruppe nicht. Der Algorithmus wird abgebrochen. Im Weiteren k"onnen wir demnach annehmen, dass $G$ nicht abelsch ist.
+
+  \item Wir "uberpr"ufen, ob $G/Z$ Exponent 2 hat. Wie schon bei der Frage nach Irreduzibilit"at betrachten wir zun"achst das Zufallselement $g$, und "uberpr"ufen, ob sich hieraus Schl"usse f"ur die gesamte Gruppe ziehen lassen. Falls also bereits f"ur das Pseudozufallselement gilt, dass kein Element des endlichen K"orpers $\mathbb{F}_{q}$ existiert, so dass $g^2 = eI$ (wobei $I$ die $2 \times 2$ Einheitsmatrix ist), das hei"st die projektive Ordnung von $g$ ist gr"o"ser 2, dann ist auch $\rm{Exp}(G/Z) > 2$ (Methode \ref{test}). Falls wir jedoch nach 15 Zufallselementen immernoch nicht ausschlie"sen k"onnen, dass $\rm{Exp}(G/Z) = 2$, untersuchen wir in Methode \ref{exp} die projektive Ordnung aller Generatoren.
+
+  Ist nun der Exponent der Faktorgruppe $G/Z$ tats"achlich 2, so enth"alt $G$ die spezielle lineare Gruppe sicher nicht. Wir k"onnen also abbrechen. Im Weiteren nehmen wir an, dass $\rm{Exp}(G/Z) > 2$ und dass wir in Methode \ref{test} oder \ref{exp} ein Element $h \in G$ gefunden haben, so dass $h^2$ nicht im Zentrum von $G$ liegt.
+
+  \item Der n"achste Schritt besteht darin herauszufinden, ob $G$ zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert ist, wof"ur uns Methode \ref{gamma} dient.
+  Da jedes Element von $\Gamma\rm{L}(1,q^2)$ in einem Singerzykel von $G$ liegt, ist es entweder irreduzibel oder skalar. Wir wissen, dass $h^2$ nicht skalar ist, da es nicht im Zentrum von $G$ liegt. Falls $h^2$ reduzibel ist, dann ist $G$ sicherlich nicht zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert und wir k"onnen den Algorithmus abbrechen. An sonsten nehmen wir an dass $h^2$ irreduzibel ist und testen ob $h^2$ sogar primitiv irreduzibel ist. Dabei hei"st in unserem Fall ein Element von $G$ primitiv irreduzibel, falls es irreduzibel ist und seine Ordnung durch eine Primzahl geteilt wird, die zwar $q^2-1$ teilt, jedoch nicht $q-1$. Ist $h^2$ primitiv irreduzibel dann untersuchen wir wie folgt, ob $G$ zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert ist oder auch nicht:
+  $G$ ist genau dann zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert, wenn $\langle h^4 \rangle$ normal in $G$ ist. Da $h^4$ zu einem Element eines Singerzyklus konjugiert ist und der Normalisator dieser zyklischen Gruppen genau $\Gamma\rm{L}(1,q^2)$ ist, k"onnen wir die obige Frage genau dann mit "`ja"' beantworten, wenn f"ur alle $i = 1, \dots, k$ stets $g_i^{-1} h^4 g_i h^4 = h^4 g_i^{-1} h^4 g_i$ gilt.
+
+  Trifft dies zu wird der Algorithmus abgebrochen, da $G$ in dem Fall die $\rm{SL}(2,q)$ nicht enth"alt.
+ 
+  \item Methode \ref{imprimitiv} entscheidet, ob $G$ imprimitiv ist.
+
+  Falls dies der Fall ist, wird der Algorithmus abgebrochen, da eine solche Matrizengruppe die spezielle lineare Gruppe nicht enth"alt.
+
+  \item Als n"achstes "uberpr"ufen wir in Methode \ref{alt}, ob $G/Z$ isomorph zu $\rm{Alt}(5)$, $\rm{Alt}(4)$ oder $\rm{Sym}(4)$ ist.
+
+  Falls dies zutrifft, und $G$ nicht eine der wenigen Ausnahmen --- n"amlich $\rm{GL}(2,3)$, $\rm{SL}(2,3)$, $\rm{GL}(2,4)$, $\rm{SL}(2,4)$, $\rm{SL}(2,5)$, $<Z\bigl(\rm{GL}(2,5)\bigr),\rm{SL}(2,5)>$ --- ist, so enth"alt $G$ die $\rm{SL}(2,q)$ nicht und der Algorithmus wird abgebrochen.
+
+  \item Falls $G$ all die bisherigen Tests bestanden hat, dann ist die Gruppe entweder modulo $Z$ "uber einem echten Unterk"orper von $\mathbb{F}_{q}$ realisierbar oder $\rm{SL}(2,q) \leq G$. Dies entscheiden wir mit Methode \ref{sl}.
+
+\end{itemize}
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\section{Methoden}\label{methoden}
+
+In diesem Kapitel werden alle im Programm f"ur Dimension 2 relevanten Methoden beschrieben. Dabei findet man einerseits neu definierte Funktionen, andererseits aber auch Methoden, die bereits f"ur den Fall $d\geq 3$ vorhanden waren und mitbenutzt werden.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\subsection{Neu definierte Methoden}
+
+In allen hier angef"uhrten Methoden wird zu allererst die Dimension der Matrizengruppe $grp$ bestimmt. Ist diese ungleich 2, so wird die jeweilige Methode mit dem Ausgabewert $false$ verlassen und nicht nochmal aufgerufen.
+
+%---------------------------------------------------------------------------------------------------------------
+%---------------------------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.TestRandomElementCase2 ( $recognise$, $grp$ )}\label{test}
+
+Die Methode erzeugt zun"achst ein Pseudozufallselement der Gruppe $grp$, berechnet sein charakteristisches Polynom und speichert dies im globalen Datensatz $recognise$ unter $recognise.g$ bzw. $recognise.cpol$. Weiterhin wird die Z"ahlvariable $recognise.n$ um eins erh"oht. Falls noch kein Element $recognise.h$ gefunden worden ist, dessen Quadrat nicht im Zentrum der Gruppe $grp$ liegt, wird die projektive Ordnung von $recognise.g$ berechnet und in die Menge $recognise.porders$ dazugenommen. Falls die projektive Ordnung von $recognise.g$ gr"o"ser 2 ist, das hei"st $recognise.g^2$ ist keine Skalarmatrix und liegt somit nicht im Zentrum von $grp$, wird $recognise.g$ als $recognise.h$ gespeichert.
+Der Ausgabewert ist $fail$, womit diese Methode nach Erh"ohung des Toleranzz"ahlers (vergleiche Kapitel \ref{konzept}) immer wieder aufgerufen wird.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.TestRandomElementCase2 := function ( recognise, grp )}
+
+  \texttt{local g, porder;}
+
+  \texttt{if recognise.d $<>$ 2 then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi};
+
+  \texttt{recognise.g := PseudoRandom( grp );}\\
+  \texttt{recognise.cpol $:=$ CharacteristicPolynomial( recognise.g );}\\
+  \texttt{recognise.n := recognise.n + 1;}\\
+  \texttt{g := recognise.g;}
+
+  \texttt{if recognise.needPOrders then}\\
+    \hspace*{0.3cm} \texttt{porder $:=$ ProjectiveOrder( g );}\\
+    \hspace*{0.3cm} \texttt{AddSet( recognise.porders, porder )};
+
+    \hspace*{0.3cm} \texttt{if porder[1] $>$ 2 then}\\
+      \hspace*{0.6cm} \texttt{recognise.h $:=$ g;}\\
+      \hspace*{0.6cm} \texttt{recognise.hasExp2 $:=$ false;}\\
+      \hspace*{0.6cm} \texttt{recognise.needPOrders $:=$ false;}\\
+    \hspace*{0.3cm} \texttt{fi;}
+
+  \texttt{fi;}
+
+  \texttt{return fail;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%------------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.IsAbelian ( $recognise$, $grp$ )}\label{abelsch}
+
+Die Methode untersucht, ob die Gruppe $grp$ abelsch ist und setzt $recognise.isAbelian$ auf $true$, falls alle Gruppenelemente kommutieren, andernfalls auf $false$. Im Falle von Kommutativit"at wird $recognise.IsSLContained$ auf $false$ gesetzt und der Algorithmus mit dem Ausgabewert $true$ beendet, da eine abelsche Gruppe die \textrm{SL}$(2,q)$ nicht enth"alt. Bei nicht abelschen Gruppen ist der Ausgabewert $false$. Demnach wird in beiden F"allen diese Methode nicht nochmal aufgerufen.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.IsAbelian := function ( recognise, grp )}
+
+  \texttt{if recognise.d $<>$ 2 then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{if IsAbelian( grp ) then}\\
+    \hspace*{0.3cm} \texttt{recognise.isAbelian := true;}\\
+    \hspace*{0.3cm} \texttt{Info( InfoClassical, 2,}\\
+    \hspace*{0.3cm} \texttt{``The group is abelian and thus doesn't contain a classical group'');}\\
+    \hspace*{0.3cm} \texttt{recognise.IsSLContained := false;}\\
+    \hspace*{0.3cm} \texttt{return true;}\\
+  \texttt{fi;}
+
+  \texttt{recognise.isAbelian := false;}\\
+  \texttt{return false;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.HasExp2 ( $recognise$, $grp$ )}\label{exp}
+
+Falls dies nach 15 Durchl"aufen immernoch unbekannt ist, untersucht die Methode, ob die Gruppe $grp$ modulo ihres Zentrums den Exponenten 2 hat oder nicht, und setzt im ersten Fall $recognise.hasExp2$ auf $true$, im zweiten auf $false$. Falls die Antwort bereits bekannt ist, wird die Methode mit dem Ausgabewert $false$ verlassen und nicht nochmal aufgerufen. Falls die Antwort zwar unbekannt ist, aber weniger als 16 Schleifendurchl"aufe ausgef"uhrt wurden, wird die Methode mit dem Ausgabewert $fail$ beendet und zu einem sp"ateren Zeitpunkt wieder aufgerufen.
+
+Zun"achst wird die projektive Ordnung der Generatoren der Gruppe bestimmt. Falls sich darunter ein Element mit projektiver Ordnung gr"o"ser 2 befindet, ist auch der Exponent der Gruppe modulo des Zentrums gr"o"ser 2. Das entsprechende Element wird sodann unter $recognise.h$ im globalen Datensatz gespeichert und die Methode mit dem Ausgabewert $false$ verlassen und nicht nochmal aufgerufen. Falls alle Generatoren projektive Ordnung kleiner gleich 2 besitzen, so ist der Exponent der (nicht trivialen) Gruppe modulo des Zentrums gleich 2. Da Eine Gruppe, die modulo des Zentrums Exponent 2 hat, die $\textrm{SL}(2,q)$ nicht enth"alt, wird in diesem Fall $recognise.IsSLContained$ auf $false$ gesetzt und der Algorithmus mit dem Ausgabewert $true$ beendet.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.HasExp2 := function ( recognise, grp )}
+
+  \texttt{local generators, gen, porder;}
+
+  \texttt{if recognise.d $<>$ 2 then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{if recognise.hasExp2 $<>$ ``unknown'' then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{generators $:=$ recognise.generators;}
+
+  \texttt{if recognise.n $>$ 15 then}
+
+    \hspace*{0.3cm} \texttt{for gen in generators do}\\
+      \hspace*{0.6cm} \texttt{porder $:=$ ProjectiveOrder( gen );}
+
+      \hspace*{0.6cm} \texttt{if porder[1] $>$ 2 then}\\
+        \hspace*{0.9cm} \texttt{recognise.h $:=$ gen;}\\
+        \hspace*{0.9cm} \texttt{recognise.hasExp2 $:=$ false;}\\
+        \hspace*{0.9cm} \texttt{return false;}\\
+      \hspace*{0.6cm} \texttt{fi;}
+
+    \hspace*{0.3cm} \texttt{od;}
+
+    \hspace*{0.3cm} \texttt{recognise.hasExp2 $:=$ true;}\\
+    \hspace*{0.3cm} \texttt{Info( InfoClassical, 2, ``The group modulo scalars has exponent 2}\\
+    \hspace*{0.3cm} \texttt{and thus doesn't contain a classical group'');}\\
+    \hspace*{0.3cm} \texttt{recognise.IsSLContained := false;}\\
+    \hspace*{0.3cm} \texttt{return true;}
+
+  \texttt{fi;}
+
+  \texttt{return fail;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.IsSubgroupOfGammaL ( $recognise$, $grp$ )}\label{gamma}
+
+ Die Methode bestimmt, ob die Gruppe $grp$ zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert ist. Falls das Element $recognise.h$ noch nicht gefunden wurde oder $recognise.h^2$ nicht primitiv irreduzibel ist, wird $fail$ ausgegeben und die Methoden erst in einem Schleifendurchlauf mit h"oherer Toleranz aufgerufen --- in der Hoffnung, dass dann ein geeignetes Element $recognise.h$ gefunden worden ist. Um ein neues Element zu finden, wird im zweiten Fall $recognise.needPOrders$ gleich $true$ gesetzt.
+
+ Falls das charakteristische Polynom von $recognise.h$ reduzibel ist und somit $recognise.h^2$ reduzibel auf $\mathcal{V} = \mathbb{F}_{q}^2$ operiert, ist $grp$ nicht zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert. Wir setzen $recognise.isSubgroupOfGammaL$ auf $false$ und verlassen die Methode mit dem Ausgabewert $false$. An sonsten nehmen wir an dass $h^2$ irreduzibel ist und testen im weiteren Verlauf von Methode \ref{gamma}, ob $G$ zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert ist oder auch nicht, indem wir "uberpr"ufen, ob das Element $recognise.h^4$ f"ur alle Erzeuger $gen$ von $grp$ mit $gen^{-1} * recognise.h^4 * gen$ kommutiert. Trifft dies zu, wird $recognise.IsSubgroupOfGammaL$ auf $true$ und $recognise.IsSLContained$ auf $false$ gesetzt und der Algorithmus mit dem Ausgabewert $true$ beendet. Ist $grp$ nicht zu einer Untergruppe von $\Gamma\rm{L}(1,q^2)$ konjugiert, so setzen wir $recognise.isSubgroupOfGammaL$ auf $false$ und verlassen die Methode mit dem Ausgabewert $false$.
+
+\begin{quote}
+  \hspace*{-0.3cm} \texttt{RECOG.IsSubgroupOfGammaL := function ( recognise, grp )}
+
+  \texttt{local h, gen, generators, order, x, x2, charPol;}
+
+  \texttt{if recognise.d $<>$ 2 then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{if recognise.h $=$ fail then}\\
+    \hspace*{0.3cm} \texttt{return fail;}\\
+  \texttt{fi;}
+
+  \texttt{h $:=$ recognise.h;}\\
+  \texttt{q $:=$ recognise.q;}\\
+  \texttt{charPol $:=$ CharacteristicPolynomial( h\^{}2 );}
+  \texttt{x $:=$ h\^{}4;}\\
+  \texttt{generators $:=$ recognise.generators;}
+
+  \texttt{if not IsIrreducible( charPol ) then}\\
+    \hspace*{0.3cm} \texttt{recognise.isSubgroupOfGammaL := false;}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{order := Order(h\^{}2);}
+
+  \texttt{if ( Order( h\^{}2 ) in Factors( q\^{}2 - 1 ) ) $=$ false or}\\
+  \texttt{Order( h\^{}2 ) in Factors( q-1 ) then}\\
+    \hspace*{0.3cm} \texttt{recognise.needPOrdes $:=$ true;}\\
+    \hspace*{0.3cm} \texttt{return fail;}\\
+  \texttt{fi;}
+
+  \texttt{for gen in generators do}\\
+    \hspace*{0.3cm} \texttt{x2 $:=$ x\^{}gen;}
+
+    \hspace*{0.3cm} \texttt{if (x2 * x $<>$ x * x2) then}\\
+      \hspace*{0.6cm} \texttt{recognise.isSubgroupOfGammaL $:=$ false;}\\
+      \hspace*{0.6cm} \texttt{return false;}\\
+    \hspace*{0.3cm} \texttt{fi;}
+
+  \texttt{od;}
+
+  \texttt{recognise.isSubgroupOfGammaL $:=$ true;}\\
+  \texttt{Info( InfoClassical, 2, ``The group is conjugate to a subgroup of}\\
+  \texttt{GammaL(1,'', q, ``) and thus doesn't contain a classical group'');}\\
+  \texttt{recognise.IsSLContained $:=$ false;}\\
+  \texttt{return true;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.IsImprimitive ( $recognise$, $grp$ )}\label{imprimitiv}
+
+ Methode \ref{imprimitiv} entscheidet, ob die Gruppe $grp$ imprimitiv ist. Falls dies der Fall ist, wird $recognise.isImprimitive$ gleich $true$ und $recognise.IsSLContained$ auf $false$ gesetzt, da eine solche Matrizengruppe die spezielle lineare Gruppe nicht enth"alt. Der Ausgabewert ist dann $true$, das hei"st der Algorithmus wird beendet. Falls die $grp$ nicht imprimitiv ist, so setzen wir $recognise.isImprimitive$ auf $false$ und verlassen die Methode mit dem Ausgabewert $false$.
+
+ Falls das Element $recognise.h$ noch nicht gefunden wurde, wird $fail$ ausgegeben und die Methode erst in einem Schleifendurchlauf mit h"oherer Toleranz aufgerufen. Um die Frage nach der Imprimitivit"at zu beantworten, betrachten wir die Eigenr"aume von $recognise.h^2$. Dazu berechnen wir die Eigenvektoren von $recognise.h^2$ und speichern diese im globalen Datensatz unter $recognise.eigenvectors$. Falls das Quadrat eines Elementes $x$ von $\rm{GL}(1,q) \,\rm{ wr }\, \mathbb{Z}_{2}$ keine Skalarmartix ist, ist $\mathcal{V}$ eine direkte Summe der Eigenr"aume von $x^2$ und die Faktoren dieser Zerlegung werden von $x^2$ erhalten.
+ Falls $recognise.h^2$ nicht zwei verschieden Eigenr"aume besitzt, ist $grp$ nicht imprimitiv. Anderenfalls, da $recognise.h^2$ nicht skalar ist, m"ussen wir "uberpr"ufen, ob die Eigenr"aume $\mathcal{V}_1$ und $\mathcal{V}_2$ von $recognise.h^2$ erhalten werden. Falls alle Generatoren das Paar $\{ \mathcal{V}_{1}, \mathcal{V}_{2}\}$ erhalten --- das hei"st jeder der Generatoren ist bez"uglich einer Basis aus Eigenvektoren eine monomiale Matrix --- so ist $grp$ imprimitiv. Sonst ist $grp$ primitiv.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.IsImprimitive := function ( recognise, grp )}
+
+  \texttt{local h, f, gen, genNew, generators, eigenvectors;}\\
+
+  \texttt{if recognise.d $<>$ 2 then}\\
+     \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{if recognise.h $=$ fail then}\\
+    \hspace*{0.3cm} \texttt{return fail;}\\
+  \texttt{fi;}
+
+  \texttt{h $:=$ recognise.h;}\\
+  \texttt{f $:=$ recognise.field;}\\
+  \texttt{generators $:=$ recognise.generators;}\\
+  \texttt{eigenvectors $:=$ Eigenvectors( f, h\^{}2 );}
+
+  \texttt{if Length(eigenvectors) $<>$ 2 then}\\
+    \hspace*{0.3cm} \texttt{recognise.isImprimitive $:=$ false;}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{for gen in generators do}\\
+    \hspace*{0.3cm} \texttt{genNew $:=$ gen\^{}eigenvectors;}
+
+    \hspace*{0.3cm} \texttt{if not IsMonomialMatrix( genNew ) then}\\
+      \hspace*{0.6cm} \texttt{recognise.isImprimitive $:=$ false;}\\
+      \hspace*{0.6cm} \texttt{return false;}\\
+    \hspace*{0.3cm} \texttt{fi;}
+
+  \texttt{od;}
+
+  \texttt{recognise.isImprimitive $:=$ true;}\\
+  \texttt{Info( InfoClassical, 2, ``The group is imprimitive}\\
+  \texttt{and thus doesn't contain a classical group'');}\\
+  \texttt{recognise.IsSLContained $:=$ false;}\\
+  \texttt{return true;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.IsAlt5Alt4Sym4 ( $recognise$, $grp$ )}\label{alt}
+
+Die Methode untersucht, ob die Gruppe $grp$ modulo ihres Zentrums isomorph zur Gruppe $\rm{Alt}(5)$, $\rm{Alt}(4)$ oder $\rm{Sym}(4)$ ist. Falls dies zutrifft, und $grp$ nicht eine der wenigen Ausnahmen, das hei"st $\rm{GL}(2,3), \rm{SL}(2,3), \rm{GL}(2,4), \rm{SL}(2,4), \rm{SL}(2,5), <Z\bigl(\rm{GL}(2,5)\bigr),\rm{SL}(2,5)>$ ist, so enth"alt $grp$ die $\rm{SL}(2,q)$ nicht. Wir setzen $recognise.IsSLContained$ auf $false$ und der Algorithmus wird mit dem Ausgabewert $true$ abgebrochen. Falls dies nicht zutrifft, oder $grp$ unter eine der Ausnahmen f"allt, dann ist der Ausgabewert $false$.
+
+Um die Frage zu beantworten, betten wir $grp$ in die symmetrische Gruppe $\rm{Sym}(n)$ ein, wobei $n$ der Anzahl der $1$-dimensionalen Untervektorr"aume gleicht und speichern das Resultat im globalen Datensatz unter $recognise.pgrp$. Falls die Anzahl der von $recognise.pgrp$ bewegten Punkte kleiner gleich 5 ist, die Ordnung der Gruppe $\vert \rm{Alt}(5) \vert = 60$, $\vert \rm{Alt}(4)\vert = 12 $ oder $\vert \rm{Sym}(4) \vert = 24$ gleicht und $recognise.pgrp$ eine alternierende oder symmetrische Gruppe ist, wird bis auf die oben erw"ahnten Ausnahmen $recognise.isAlt5Alt4Sym4$ auf $true$ gesetzt --- anderenfalls auf $false$.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.IsAlt5Alt4Sym4 := function ( recognise, grp )}
+
+  \texttt{local pgrp, q;}
+
+  \texttt{if recognise.d <> 2 then}\\
+    \hspace*{0.3cm}\texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{pgrp := ProjectiveActionOnFullSpace( grp, recognise.field, 2 );}\\
+  \texttt{recognise.pgrp := pgrp;}
+  \texttt{q := recognise.q;}
+ 
+  \texttt{if NrMovedPoints( pgrp ) <= 5 then}
+
+    \hspace*{0.3cm} \texttt{if ( Size( pgrp ) $=$ 12 and q $<>$ 3 ) or}\\
+    \hspace*{0.4cm} \texttt{( Size( pgrp ) = 24 and q <> 3 ) or}\\
+    \hspace*{0.4cm} \texttt{( Size( pgrp ) = 60 and q <> 4 and q <> 5 ) then}
+
+      \hspace*{0.6cm}\texttt{if IsAlternatingGroup( pgrp ) or IsSymmetricGroup( pgrp ) then}\\
+	\hspace*{0.9cm}\texttt{recognise.isAlt5Alt4Sym4 $:=$ true;}\\
+	\hspace*{0.9cm}\texttt{Info( InfoClassical, 2, ``The group modulo scalars is isomorphic}\\
+        \hspace*{0.9cm}\texttt{Alt5, ALt4 or Sym4 and thus doesn't contain a classical group''};\\
+    	\hspace*{0.9cm}\texttt{recognise.IsSLContained $:=$ false;}\\
+    	\hspace*{0.9cm}\texttt{return true;}\\
+      \hspace*{0.6cm}\texttt{fi;}
+
+    \hspace*{0.3cm}\texttt{fi;}
+
+   \texttt{fi;}
+
+   \texttt{recognise.isAlt5Alt4Sym4 := false;}\\
+   \texttt{return false;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.IsSL2Contained ( $recognise$, $grp$ )}\label{sl}
+
+ Die Methode "uberpr"uft den jeweiligen Informationsstand, das hei"st sie testet, ob bereits gen"ugend Informationen zu Verf"ugung stehen, um zu entscheiden, dass die Gruppe $grp$ die spezielle lineare Gruppe $\rm{SL}(2,q)$ enth"alt.
+
+ Falls die Gruppe $grp$ reduzibel ist oder mindestens einer der Werte $recognise.isAbelian$, $recognise.hasExp2$, $recognise.isSubgroupOfGammaL$, $recognise.isImprimitive$ oder auch $recognise.isAlt5Alt4Sym4$ nicht gleich $false$ ist, so wird die Methode mit dem Ausgabewert $fail$ verlassen. Anderenfalls ist $grp$ modulo des Zentrums entweder "uber einem echten Unterk"orper von $\mathbb{F}_{q}$ realisierbar oder enth"alt die spezielle lineare Gruppe $\rm{SL}(2,q)$.
+ Die Gruppe $grp$ ist modulo ihres Zentrums genau dann "uber einem echten Unterk"orper von $\mathbb{F}_q$ realisierbar, falls $grp$ intransitiv auf den $q+1$ eindimensionalen Untervektorr"aumen von $\mathcal{V}$ operiert, das hei"st falls $recognise.pgrp$ intransitiv ist. Ist dies der Fall, so setzen wir $recognise.isRepresentableOverSubfield$ auf $false$ und $recognise.IsSLContained$ auf $true$ und verlassen die Methode mit dem Ausgabewert $false$.
+ Anderenfalls setzen wir umgekehrt $recognise.isRepresentableOverSubfield$ auf $true$, $recognise.IsSLContained$ auf $false$ und brechen den Algorithmus mit dem Ausgabewert $true$ ab, da eine solche Gruppe die $\rm{SL}(2,q)$ nicht enth"alt.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.IsSL2Contained := function( recognise, grp )}
+
+  \texttt{if recognise.d <> 2 then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{if recognise.isReducible = true then}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{if (recognise.isReducible = false and}\\
+  \hspace*{0.1cm} \texttt{recognise.isAbelian = false and}\\
+  \hspace*{0.1cm} \texttt{recognise.hasExp2 = false and}\\
+  \hspace*{0.1cm} \texttt{recognise.isSubgroupOfGammaL = false and}\\
+  \hspace*{0.1cm} \texttt{recognise.isImprimitive = false and}\\
+  \hspace*{0.1cm} \texttt{recognise.isAlt5Alt4Sym4 = false ) then}
+
+    \hspace*{0.3cm} \texttt{if IsTransitive( recognise.pgrp ) then}\\
+      \hspace*{0.6cm} \texttt{recognise.isRepresentableOverSubfield := false;}\\
+      \hspace*{0.6cm} \texttt{Info(InfoClassical,2,``The group is not generic and containes'');}\\
+      \hspace*{0.6cm} \texttt{Info(InfoClassical,2,``SL('', 2, ``, '', recognise.q, ``);'');}\\
+      \hspace*{0.6cm} \texttt{recognise.IsSLContained := true;}\\
+      \hspace*{0.6cm} \texttt{return true;}
+
+    \hspace*{0.3cm} \texttt{fi;}
+
+    \hspace*{0.3cm} \texttt{recognise.isRepresentableOverSubfield := true;}\\
+    \hspace*{0.3cm} \texttt{Info( InfoClassical, 2, ``The group is representable over a proper}\\
+    \hspace*{0.3cm} \texttt{subfield and thus doesn't contain a classical group'');}\\
+    \hspace*{0.3cm} \texttt{recognise.IsSLContained := false;}\\
+    \hspace*{0.3cm} \texttt{return true;}
+
+  \texttt{fi;}
+
+
+  \texttt{return fail;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsection{Vorhandene Methoden}
+
+Der Vollst"andigkeit halber listen wir hier zwei Methoden auf, die bereits f"ur den Fall $d > 2$ implementiert wurden und nun mitverwendet werden.
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.IsReducible ( $recognise$, $grp$ )}\label{redu}
+
+Die Methode untersucht, ob das derzeitige Zufallselement bereits auf die Irreduzibilit"at der Gruppe $grp$ schlie"sen l"asst.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.IsReducible := function( recognise, grp )}
+
+  \texttt{local deg, dims, g;}
+
+  \texttt{deg := List( Factors( recognise.cpol ), i-> Degree( i ) );}
+
+  \texttt{dims := [ 0 ];}
+
+  \texttt{for g in deg do}\\
+    \hspace*{0.3cm} \texttt{UniteSet( dims, dims + g );}\\
+  \texttt{od;}
+
+  \texttt{if IsEmpty( recognise.dimsReducible ) then}\\
+     \hspace*{0.3cm} \texttt{recognise.dimsReducible := dims;}\\
+  \texttt{else}\\
+     \hspace*{0.3cm} \texttt{IntersectSet( recognise.dimsReducible, dims );}\\
+  \texttt{fi;}
+
+  \texttt{if Length( recognise.dimsReducible ) = 2 then}\\
+    \hspace*{0.3cm} \texttt{recognise.isReducible := false;}\\
+    \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{fi;}
+
+  \texttt{return fail;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\subsubsection{RECOG.MeatAxe ( $recognise$, $grp$ )}\label{meat}
+
+Falls dies nach 15 Schleifendurchl"aufen immer noch nicht bekannt ist, untersucht diese Methode die Gruppe $grp$ auf Irreduzibilit"at, indem sie den MeatAxe Algorithmus anwendet.
+
+\begin{quote}
+\hspace*{-0.3cm} \texttt{RECOG.MeatAxe := function( recognise, grp )}
+
+  \texttt{if recognise.n > 15 then}\\
+    \hspace*{0.3cm} \texttt{recognise.needMeataxe := true;}\\
+  \texttt{fi;}
+
+  \texttt{if recognise.needMeataxe <> true}\\
+    \hspace*{0.3cm} \texttt{then return NotApplicable;}\\
+  \texttt{fi;}
+
+  \texttt{if MTX.IsIrreducible( recognise.module ) then}\\
+     \hspace*{0.3cm} \texttt{recognise.isReducible := false;}\\
+     \hspace*{0.3cm} \texttt{return false;}\\
+  \texttt{else}\\
+     \hspace*{0.3cm} \texttt{Info( InfoClassical, 2, ``The group acts reducibly}\\
+     \hspace*{0.3cm} \texttt{and thus doesn't contain a classical group'');}\\
+     \hspace*{0.3cm} \texttt{recognise.isReducible := true;}\\
+     \hspace*{0.3cm} \texttt{recognise.IsSLContained := false;}\\
+     \hspace*{0.3cm} \texttt{return true;}\\
+  \texttt{fi;}
+
+\hspace*{-0.3cm} \texttt{end;}
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\section{Beispiele}\label{bsp}
+
+\subsection{$\rm{SL}(2,q) \nleq G$}
+
+\subsubsection*{Beispiel einer abelschen Gruppe}
+
+\begin{quote}
+
+\hspace*{-1cm} \texttt{gap> LoadPackage(``recog'');;}\\
+\hspace*{-1cm} \texttt{gap> m1 := [ [ 0*Z(8), Z(8)\^{}3 ], [ Z(8)\^{}2, 0*Z(8) ] ];;}\\
+\hspace*{-1cm} \texttt{gap> g := Group([m1]);;}\\
+\hspace*{-1cm} \texttt{gap> RecogniseClassical(g);}\\
+
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 80 method ``IsReducible'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 69 method ``IsAbelian'': success.}
+
+\hspace*{-1cm} \texttt{rec( field := GF(2\^{}3), d := 2, p := 2, a := 3, q := 8, E := [  ], LE := [  ],}\\
+  \hspace*{-1cm} \texttt{BE := [  ], LB := [  ], LS := [  ], E2 := [  ], LE2 := [  ], BE2 := [  ],}\\
+  \hspace*{-1cm} \texttt{g := [ [ Z(2\^{}3)\^{}3, 0*Z(2) ], [ 0*Z(2), Z(2\^{}3)\^{}3 ] ], cpol := x\_1\^{}2+Z(2\^3{})\^{}6,}\\
+  \hspace*{-1cm} \texttt{isppd := fail, n := 1,}\\
+  \hspace*{-1cm} \texttt{module := rec( field := GF(2\^{}3), isMTXModule := true, dimension := 2,}\\
+      \hspace*{-0.3cm} \texttt{generators := [ [ [ 0*Z(2), Z(2\^{}3)\^{}3 ], [ Z(2\^{}3)\^{}2, 0*Z(2) ] ] ] ),}\\
+  \hspace*{-1cm} \texttt{currentgcd := 2, isReducible := ``unknown'', isGeneric := false,}\\
+  \hspace*{-1cm} \texttt{isNotExt := ``unknown'', hint := ``unknown'', hintIsWrong := false,}\\
+  \hspace*{-1cm} \texttt{isNotMathieu := ``unknown'', isNotAlternating := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{isNotPSL := ``unknown'', possibleNearlySimple := [  ],}\\
+  \hspace*{-1cm} \texttt{dimsReducible := [ 0, 1, 2 ], orders := [  ], porders := [  ],}\\
+  \hspace*{-1cm} \texttt{hasSpecialEle := false, bc := ``unknown'', kf := ``unknown'', plusminus := [  ],}\\
+  \hspace*{-1cm} \texttt{sq1 := [ [ [ Z(2\^{}3), 0*Z(2) ], [ 0*Z(2), Z(2\^{}3) ] ] ],}\\
+  \hspace*{-1cm} \texttt{sq2 := [ [ [ Z(2\^{}3), 0*Z(2) ], [ 0*Z(2), Z(2\^{}3) ] ] ],}\\
+  \hspace*{-1cm} \texttt{scalars := Group([ [ [ Z(2\^{}3), 0*Z(2) ], [ 0*Z(2), Z(2\^{}3) ] ] ]),}\\
+  \hspace*{-1cm} \texttt{needMeataxe := false, needForms := false, needOrders := false,}\\
+  \hspace*{-1cm} \texttt{needPOrders := false, needBaseChange := false, needKF := false,}\\
+  \hspace*{-1cm} \texttt{needPlusMinus := false, needDecompose := false, needLB := false,}\\
+  \hspace*{-1cm} \texttt{needE2 := false, maybeDual := true, maybeFrobenius := false,}\\
+  \hspace*{-1cm} \texttt{ClassicalForms := [  ], isAbelian := true, h := fail, hasExp2 := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{isSubgroupOfGammaL := ``unknown'', isImprimitive := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{generators := [ [ [ 0*Z(2), Z(2\^{}3)\^{}3 ], [ Z(2\^{}3)\^{}2, 0*Z(2) ] ] ],}\\
+  \hspace*{-1cm} \texttt{isAlt5Alt4Sym4 := ``unknown'', isRepresentableOverSubfield := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{pgrp := ``unknown'', IsSLContained := false, IsSpContained := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{IsSUContained := ``unknown'', IsSOContained := ``unknown'' )}
+
+\end{quote}
+
+
+\subsubsection*{Beispiel einer primitiven Gruppe}
+
+\begin{quote}
+
+\hspace*{-1cm} \texttt{gap> LoadPackage(``recog'');}\\
+\hspace*{-1cm} \texttt{gap> m1 := [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7)\^{}2 ] ];;}\\
+\hspace*{-1cm} \texttt{gap> m2 := [ [ 0*Z(7), Z(7)\^{}3 ], [ Z(7)\^{}2, 0*Z(7) ] ];;}\\
+\hspace*{-1cm} \texttt{gap> g := Group([m1,m2]);;}\\
+\hspace*{-1cm} \texttt{gap> RecogniseClassical(g);}\\
+
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 80 method ``IsReducible'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 68 method ``HasExp2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 67 method ``IsSubgroupOfGammaL'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 66 method ``IsImprimitive'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Increasing tolerance to 0}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 80 method ``IsReducible'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 66 method ``IsImprimitive'': success.}\\
+\hspace*{-1cm} \texttt{rec( field := GF(7), d := 2, p := 7, a := 1, q := 7, E := [  ], LE := [  ],}\\
+  \hspace*{-1cm} \texttt{BE := [  ], LB := [  ], LS := [  ], E2 := [  ], LE2 := [  ], BE2 := [  ],}\\
+  \hspace*{-1cm} \texttt{g := [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7)\^{}2 ] ],}\\
+  \hspace*{-1cm} \texttt{cpol := x\_1\^{}2+Z(7)\^{}2*x\_1-Z(7)\^{}0, isppd := fail, n := 2,}\\
+  \hspace*{-1cm} \texttt{module := rec( field := GF(7), isMTXModule := true, dimension := 2,}\\
+      \hspace*{-1cm} \texttt{generators := [ [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7)\^{}2 ] ],}\\
+          \hspace*{-1cm} \texttt{[ [ 0*Z(7), Z(7)\^{}3 ], [ Z(7)\^{}2, 0*Z(7) ] ] ] ), currentgcd := 2,}\\
+  \hspace*{-1cm} \texttt{isReducible := ``unknown'', isGeneric := false, isNotExt := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{hint := ``unknown'', hintIsWrong := false, isNotMathieu := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{isNotAlternating := ``unknown'', isNotPSL := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{possibleNearlySimple := [  ], dimsReducible := [ 0, 1, 2 ], orders := [  ],}\\
+  \hspace*{-1cm} \texttt{porders := [ [ 6, Z(7)\^{}0 ] ], hasSpecialEle := false, bc := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{kf := ``unknown'', plusminus := [  ],}\\
+  \hspace*{-1cm} \texttt{sq1 := [ [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7) ] ] ],}\\
+  \hspace*{-1cm} \texttt{sq2 := [ [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7) ] ] ],}\\
+  \hspace*{-1cm} \texttt{scalars := Group([ [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7) ] ] ]),}\\
+  \hspace*{-1cm} \texttt{needMeataxe := false, needForms := false, needOrders := false,}\\
+  \hspace*{-1cm} \texttt{needPOrders := false, needBaseChange := false, needKF := false,}\\
+  \hspace*{-1cm} \texttt{needPlusMinus := false, needDecompose := false, needLB := false,}\\
+  \hspace*{-1cm} \texttt{needE2 := false, maybeDual := true, maybeFrobenius := false,}\\
+  \hspace*{-1cm} \texttt{ClassicalForms := [  ], isAbelian := false,}\\
+  \hspace*{-1cm} \texttt{h := [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7)\^{}2 ] ], hasExp2 := false,}\\
+  \hspace*{-1cm} \texttt{isSubgroupOfGammaL := false, isImprimitive := true,}\\
+  \hspace*{-1cm} \texttt{generators := [ [ [ Z(7), 0*Z(7) ], [ 0*Z(7), Z(7)\^{}2 ] ],}\\
+      \hspace*{-1cm} \texttt{[ [ 0*Z(7), Z(7)\^{}3 ], [ Z(7)\^{}2, 0*Z(7) ] ] ], isAlt5Alt4Sym4 := false,}\\
+  \hspace*{-1cm} \texttt{isRepresentableOverSubfield := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{pgrp := Group([ (3,4,5,6,7,8), (1,2)(3,4)(5,8)(6,7) ]),}\\
+  \hspace*{-1cm} \texttt{IsSLContained := false, IsSpContained := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{IsSUContained := ``unknown'', IsSOContained := ``unknown'' )}
+
+\end{quote}
+
+
+\subsection{$\rm{SL}(2,q) \leq G$}
+
+\begin{quote}
+
+\hspace*{-1cm} \texttt{gap> LoadPackage(``recog'');}\\
+\hspace*{-1cm} \texttt{gap> m1 := [ [ Z(11), 0*Z(11) ], [ 0*Z(11), Z(11) ] ];;}\\
+\hspace*{-1cm} \texttt{gap> m2 := [ [ Z(11\^{}2), 0*Z(11) ], [ 0*Z(11), Z(11\^{}2)\^{}119 ] ];;}\\
+\hspace*{-1cm} \texttt{gap> m3 := [ [ Z(11)\^{}5, Z(11)\^{}0 ], [ Z(11)\^{}5, 0*Z(11) ] ];;}\\
+\hspace*{-1cm} \texttt{gap> g := Group( [ m1, m2, m3 ] );;}\\
+\hspace*{-1cm} \texttt{gap> RecogniseClassical(g);}\\
+
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 68 method ``HasExp2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 67 method ``IsSubgroupOfGammaL'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 66 method ``IsImprimitive'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Increasing tolerance to 0}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 67 method ``IsSubgroupOfGammaL'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Increasing tolerance to 1}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 67 method ``IsSubgroupOfGammaL'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Increasing tolerance to 2}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 67 method ``IsSubgroupOfGammaL'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Increasing tolerance to 3}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 67 method ``IsSubgroupOfGammaL'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Increasing tolerance to 4}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 99 method ``TestRandomElementCase2'': fail.}\\
+\hspace*{-1cm} \texttt{\#I  Finished rank 15 method ``IsSL2Contained'': success.}\\
+\hspace*{-1cm} \texttt{rec( field := GF(11\^{}2), d := 2, p := 11, a := 2, q := 121, E := [  ],}\\
+  \hspace*{-1cm} \texttt{LE := [  ], BE := [  ], LB := [  ], LS := [  ], E2 := [  ], LE2 := [  ],}\\
+  \hspace*{-1cm} \texttt{BE2 := [  ], g := [ [ Z(11\^{}2)\^{}100, Z(11)\^{}9 ], [ Z(11\^{}2)\^{}80, Z(11\^{}2)\^{}106 ] ],}\\
+  \hspace*{-1cm} \texttt{cpol := x\_1\^{}2+Z(11\^{}2)\^{}45*x\_1+Z(11)\^{}0, isppd := fail, n := 6,}\\
+  \hspace*{-1cm} \texttt{module := rec( field := GF(11\^{}2), isMTXModule := true, dimension := 2,}\\
+      \hspace*{-1cm} \texttt{generators := [ [ [ Z(11), 0*Z(11) ], [ 0*Z(11), Z(11) ] ],}\\
+          \hspace*{-1cm} \texttt{[ [ Z(11\^{}2), 0*Z(11) ], [ 0*Z(11), Z(11\^{}2)\^{}119 ] ],}\\
+          \hspace*{-1cm} \texttt{[ [ Z(11)\^{}5, Z(11)\^{}0 ], [ Z(11)\^{}5, 0*Z(11) ] ] ] ), currentgcd := 2,}\\
+  \hspace*{-1cm} \texttt{isReducible := false, isGeneric := false, isNotExt := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{hint := ``unknown'', hintIsWrong := false, isNotMathieu := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{isNotAlternating := ``unknown'', isNotPSL := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{possibleNearlySimple := [  ], dimsReducible := [ 0, 2 ], orders := [  ],}\\
+  \hspace*{-1cm} \texttt{porders := [ [ 61, Z(11)\^{}4 ], [ 61, Z(11)\^{}5 ], [ 61, Z(11)\^{}6 ],}\\
+      \hspace*{-1cm} \texttt{[ 61, Z(11)\^8{} ] ], hasSpecialEle := false, bc := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{kf := ``unknown'', plusminus := [  ],}\\
+  \hspace*{-1cm} \texttt{sq1 := [ [ [ Z(11\^{}2), 0*Z(11) ], [ 0*Z(11), Z(11\^{}2) ] ] ],}\\
+  \hspace*{-1cm} \texttt{sq2 := [ [ [ Z(11\^{}2), 0*Z(11) ], [ 0*Z(11), Z(11\^{}2) ] ] ],}\\
+  \hspace*{-1cm} \texttt{scalars := Group([ [ [ Z(11\^{}2), 0*Z(11) ], [ 0*Z(11), Z(11\^{}2) ] ] ]),}\\
+  \hspace*{-1cm} \texttt{needMeataxe := false, needForms := false, needOrders := false,}\\
+  \hspace*{-1cm} \texttt{needPOrders := false, needBaseChange := false, needKF := false,}\\
+  \hspace*{-1cm} \texttt{needPlusMinus := false, needDecompose := false, needLB := false,}\\
+  \hspace*{-1cm} \texttt{needE2 := false, maybeDual := true, maybeFrobenius := true,}\\
+  \hspace*{-1cm} \texttt{ClassicalForms := [  ], isAbelian := false,}\\
+  \hspace*{-1cm} \texttt{h := [ [ Z(11\^{}2)\^{}100, Z(11)\^{}9 ], [ Z(11\^{}2)\^{}80, Z(11\^{}2)\^{}106 ] ],}\\
+  \hspace*{-1cm} \texttt{hasExp2 := false, isSubgroupOfGammaL := false, isImprimitive := false,}\\
+  \hspace*{-1cm} \texttt{generators := [ [ [ Z(11), 0*Z(11) ], [ 0*Z(11), Z(11) ] ],}\\
+      \hspace*{-1cm} \texttt{[ [ Z(11\^{}2), 0*Z(11) ], [ 0*Z(11), Z(11\^{}2)\^{}119 ] ],}\\
+      \hspace*{-1cm} \texttt{[ [ Z(11)\^{}5, Z(11)\^{}0 ], [ Z(11)\^{}5, 0*Z(11) ] ] ],}\\
+  \hspace*{-1cm} \texttt{isAlt5Alt4Sym4 := false, isRepresentableOverSubfield := false,}\\
+  \hspace*{-1cm} \texttt{pgrp := <permutation group with 3 generators>, IsSLContained := true,}\\
+  \hspace*{-1cm} \texttt{IsSpContained := ``unknown'', IsSUContained := ``unknown'',}\\
+  \hspace*{-1cm} \texttt{IsSOContained := ``unknown'' )}
+
+\end{quote}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\section{Bibliografie}
+
+\begin{thebibliography}{bibl}
+ \bibitem{NP92} Peter M. Neumann and Cheryl E. Praeger. \textit{A recognition algorithm for special linear groups}. Proc. London Math. Soc. (3), 65:555-603, 1992.
+
+ \bibitem{NP98} Alice C. Niemeyer and Cheryl E. Praeger. \textit{A recognition algorithm for classical groups over finite fields}. Proc. London Math. Soc., 77:117-169, 1998.
+
+ \bibitem{GAP} The GAP Group, \textit{GAP --- Groups, Algorithms,and Programming}. Version 4.4.9, 2006. (http://www.gap-system.org)
+\end{thebibliography}
+
+%----------------------------------------------------------------------------------------------
+%----------------------------------------------------------------------------------------------
+
+\end{document}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
