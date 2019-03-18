@@ -31,7 +31,6 @@
 ##
 ##  This file is generated automatically.
 ##
-DeclareInfoClass( "InfoRecAnBB" );
 SetInfoLevel( InfoRecAnBB, 0 );
 
 
